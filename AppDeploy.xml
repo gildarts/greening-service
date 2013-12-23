@@ -1,0 +1,1565 @@
+﻿<Response>
+    <Application Name="shared" Version="2.1.0.29">
+        <Property Name="Config">
+            <Config>
+                <DefaultConnection>
+                    <Driver>org.postgresql.Driver</Driver>
+                    <URL>_app_property_db_url</URL>
+                    <UserName>_app_property_db_user</UserName>
+                    <Password>_app_property_db_pwd</Password>
+                </DefaultConnection>
+                <UDT Enabled="false" />
+                <UDS Enabled="false" />
+            </Config>
+        </Property>
+        <Property Name="Resource">
+            <Resources>
+                <Resource Name="QueryUserInfoSql">
+                    <![CDATA[
+            SELECT userid as "UserName",
+                    password as "Password",
+                    login_uuid as "Property_UserUUID", --唯一識別
+                    account.id as "Property_ID", --系統編號
+                    lower(login_type) as "Property_LoginType", 
+                    --(case when first_name is null then '' else first_name end) as "Property_FirstName",
+                    --(case when last_name is null then '' else last_name end) as "Property_LastName",
+                    (case when login_args is null then '' else login_args end) as "Property_LoginArgs",
+                    (case when ref_domain_id is null then '' else to_char(ref_domain_id,'99999999999999') end) as "Property_DomainID"
+                    --(case when domain.name is null then '' else domain.name end) as "Property_DomainName",
+                    --(case when signed then 'true' else 'false' end) as "Property_Signed",
+                    --(case when is_domain_admin then 'true' else 'false' end) as "Property_IsDomainAdmin",
+                    --(select userid from account a2 where account.ref_linked_userid=a2.id) "Property_LinkBy",
+                    --language "Property_Language"
+            FROM account
+            LEFT OUTER JOIN domain ON account.ref_domain_id=domain.id and domain.enabled=true
+            WHERE account.userid=@UserName --使用 Lower 將會使 Index 不作用。
+                and account.enabled = true and (domain.enabled=true or ref_domain_id is null); 
+                    ]]>
+                </Resource>
+               <Resource Name="QueryPersonalApplicationRef">
+                    <![CDATA[
+                    --Personal 呼叫一次即可取得目前 User 和 LinkedUser 的 Application。
+                    select account.userid,applications.ap_name "access_point",account_app.type,applications.name "title",memo
+                    from account join account_app on account.id=account_app.ref_account_id
+                        join applications on account_app.ref_application_id=applications.id
+                    where account.id in (select id from account where (ref_linked_userid=(select id from account where userid='@@UserID') and ref_linked_userid_approved ='t') or userid='@@UserID')
+                    and type='@@Type'
+                    ]]>
+                </Resource>
+                <Resource Name="QueryDomainApplicationRef">
+                    <![CDATA[
+                    --Domain 呼叫一次只能取得一個 User 的 Domain 和 Parent Domain 的 Application。
+                    select domain.name,applications.ap_name "access_point",type,applications.name "title",memo
+                    from domain join domain_app on domain.id=domain_app.ref_domain_id
+                        join applications on domain_app.ref_application_id=applications.id
+                    where domain.id in (select ref_domain_id from account where id in (select id from account where userid='@@UserID'))
+                        and type='@@Type'
+                    union
+                    --Parent Domain
+                    select domain.name,applications.ap_name "access_point",type,applications.name "title",memo
+                    from domain join domain_app on domain.id=domain_app.ref_domain_id
+                        join applications on domain_app.ref_application_id=applications.id
+                    where domain.id  in (select ref_parent_id from domain where id in (select ref_domain_id from account where id in (select id from account where userid='@@UserID')))
+                        and type='@@Type'
+                    ]]>
+                </Resource>
+                <Resource Name="QueryPersonalApplication">
+                    <![CDATA[
+                    --Personal 呼叫一次即可取得目前 User 和 LinkedUser 的 Application。
+                    select account.userid,account_app.access_point,type,title,memo
+                    from account join account_app on account.id=account_app.ref_account_id
+                    where account.id in (select id from account where (ref_linked_userid=(select id from account where userid='@@UserID') and ref_linked_userid_approved ='t') or userid='@@UserID')
+                    and type='@@Type'
+                    ]]>
+                </Resource>
+                <Resource Name="QueryDomainApplication">
+                    <![CDATA[
+                    --Domain 呼叫一次只能取得一個 User 的 Domain 和 Parent Domain 的 Application。
+                    select domain.name,domain_app.access_point,type,title,memo
+                    from domain join domain_app on domain.id=domain_app.ref_domain_id
+                    where domain.id in (select ref_domain_id from account where id in (select id from account where userid='@@UserID'))
+	                    and type='@@Type'
+                    union
+                    --Parent Domain
+                    select domain.name,domain_app.access_point,type,title,memo
+                    from domain join domain_app on domain.id=domain_app.ref_domain_id
+                    where domain.id  in (select ref_parent_id from domain where id in (select ref_domain_id from account where id in (select id from account where userid='@@UserID')))
+	                    and type='@@Type'
+                    ]]>
+                </Resource>
+                <Resource Name="QueryLinkedAccount">
+                    <![CDATA[
+                    select userid from account where ref_linked_userid =(select id from account where userid='@@UserID') and ref_linked_userid_approved ='t'
+                    ]]>
+                </Resource>
+                <Resource Name="QueryLinkedAccountAll">
+                    <![CDATA[
+                    select userid,ref_linked_userid_approved from account where ref_linked_userid =(select id from account where userid='@@UserID')
+                    ]]>
+                </Resource>
+            </Resources>
+        </Property>
+        <Contract Name="user">
+            <Property Name="Config">
+                <AccessPoint>
+                    <Authentication>
+                        <Basic DriverClass="ischool.dsa.security.authentication.TypicalAuthenticator" Enabled="True">
+                            <Authenticators>
+                                <Authenticator DriverClass="ischool.dsa.security.authentication.typical.HostedValidator" Type="" />
+                                <Authenticator DriverClass="ischool.dsa.security.authentication.typical.HostedValidator" Type="DSA" />
+                                <Authenticator DriverClass="ischool.dsa.security.authentication.typical.HostedValidator" Type="hosted" />
+                                <Authenticator DriverClass="ischool.dsa.security.authentication.typical.GoogleValidator" Type="Google" />
+                                <Authenticator DriverClass="ischool.dsa.security.authentication.typical.WebServiceValidator" Type="WebService" />
+                            </Authenticators>
+                            <PasswordHashProvider DriverClass="SHA1" />
+                            <UserInfoStorage Type="Database">
+                                <DBSchema>
+                                    <!--參數名稱：@UserName，回傳必需要有 UserName、Password 欄位，
+				而且順序必需是 UserName、Password。-->
+                                    <!--「Property_」開頭的欄位會加入到 IUesrInfo 的 Properties 中。-->
+                                    <GetUserDataQuery>
+                                        <![CDATA[
+            SELECT userid as "UserName",
+                    password as "Password",
+                    login_uuid as "Property_UserUUID", --唯一識別
+                    account.id as "Property_ID", --系統編號
+                    lower(login_type) as "Property_LoginType", 
+                    --(case when first_name is null then '' else first_name end) as "Property_FirstName",
+                    --(case when last_name is null then '' else last_name end) as "Property_LastName",
+                    (case when login_args is null then '' else login_args end) as "Property_LoginArgs",
+                    (case when ref_domain_id is null then '' else to_char(ref_domain_id,'99999999999999') end) as "Property_DomainID"
+                    --(case when domain.name is null then '' else domain.name end) as "Property_DomainName",
+                    --(case when signed then 'true' else 'false' end) as "Property_Signed",
+                    --(case when is_domain_admin then 'true' else 'false' end) as "Property_IsDomainAdmin",
+                    --(select userid from account a2 where account.ref_linked_userid=a2.id) "Property_LinkBy",
+                    --language "Property_Language"
+            FROM account
+            LEFT OUTER JOIN domain ON account.ref_domain_id=domain.id and domain.enabled=true
+            WHERE account.userid=@UserName --使用 Lower 將會使 Index 不作用。
+                and account.enabled = true and (domain.enabled=true or ref_domain_id is null); 
+						]]>
+                                    </GetUserDataQuery>
+                                    <!--參數名稱：@UserName，必需要有 RoleName 欄位。-->
+                                    <GetUserRolesQuery>
+                                        <![CDATA[
+			        SELECT role AS RoleName,userid AS UserName FROM account WHERE userid=@UserName;
+						]]>
+                                    </GetUserRolesQuery>
+                                </DBSchema>
+                            </UserInfoStorage>
+                        </Basic>
+                        <Session Enabled="True">
+                            <SessionManager Type="DBSessionManager">
+                                <Timeout>1500</Timeout>
+                            </SessionManager>
+                        </Session>
+                        <Passport Enabled="True">
+                            <Issuer Name="test.greening.shared.user">
+                                <CertificateProvider Type="HttpGet">https://authbug.ischool.com.tw:8443/dsa/greening/info/Public.GetPublicKey</CertificateProvider>
+                            </Issuer>
+                            <Issuer Name="greening.shared.user">
+                                <CertificateProvider Type="HttpGet">https://auth.ischool.com.tw:8443/dsa/greening/info/Public.GetPublicKey</CertificateProvider>
+                            </Issuer>
+                            <AccountLinking Type="mapping">
+                                <TableName>account</TableName>
+                                <UserNameField>userid</UserNameField>
+                                <MappingField>userid</MappingField>
+                                <Properties>
+                                    <!--<Property Alias="LoginType" Field="login_type" />
+                                    <Property Alias="DomainID" Field="ref_domain_id" />
+                                    <Property Alias="IsDomainAdmin" Field="case when is_domain_admin then 'true' else 'false' end" />
+                                    <Property Alias="Signed" Field="case when signed then 'true' else 'false' end" />
+                                    <Property Alias="FirstName" Field="first_name" />
+                                    <Property Alias="LastName" Field="last_name" />-->
+                                </Properties>
+                            </AccountLinking>
+                        </Passport>
+                    </Authentication>
+                    <CertificateProvider Enabled="true" Timeout="1500">
+                        <Issuer>greening.shared.user</Issuer>
+                        <Timeout>1500</Timeout>
+                    </CertificateProvider>
+                </AccessPoint>
+            </Property>
+            <Property Name="Resource">
+                <Resources>
+                </Resources>
+            </Property>
+            <Property Name="Enabled">true</Property>
+            <Property Name="DefaultContract">true</Property>
+            <Package Name=".">
+                <Service Name="AddApplication">
+                    <Property Name="Definition">
+                        <Service>
+                            <ServiceDescription>
+                                <Handler ExecType="Util.DBHelper">
+                                    <ResourceName>DBHelperRule</ResourceName>
+                                    <Resources>
+                                        <Resource Name="ReturnSQL" />
+                                        <Resource Name="DBHelperRule">
+                                            <Action>Insert</Action>
+                                            <SQLTemplate>
+                                                <![CDATA[
+				                                insert into account_app @@FieldList
+				                                ]]>
+                                            </SQLTemplate>
+                                            <RequestRecordElement>Applications/Application</RequestRecordElement>
+                                            <InternalVariable>
+                                                <Variable Name="Account" Source="UserInfo" Key="UserName"/>
+                                            </InternalVariable>
+                                            <Preprocesses>
+                                                <Preprocess Name="RefAccountID" Type="Variable">
+                                                    <![CDATA[
+                                    	                select id "RefAccountID" from account where userid='@@Account'
+                                    	                ]]>
+                                                </Preprocess>
+                                            </Preprocesses>
+                                            <FieldList Name="FieldList" Source="">
+                                                <Field AutoNumber="True" Source="ID" Target="id" />
+                                                <Field Source="RefAccountID" Target="ref_account_id" SourceType="Variable" />
+                                                <Field Required="True" Source="AccessPoint" Target="access_point" />
+                                                <Field Required="True" Source="Type" Target="type" />
+                                                <Field Source="Title" Target="title" />
+                                                <Field Source="Memo" Target="memo" />
+                                            </FieldList>
+                                        </Resource>
+                                    </Resources>
+                                </Handler>
+                                <Usage />
+                            </ServiceDescription>
+                            <ServiceHelp>
+                                <Description />
+                                <RequestSDDL>
+                                    Request=(Applications)
+                                    Applications={Application}
+                                    Application=(AccessPoint,Type,Title,Memo)
+                                    AccessPoint:string
+                                    Type:dynpkg
+                                    Title:string
+                                    Memo:string
+                                </RequestSDDL>
+                                <ResponseSDDL />
+                                <Errors />
+                                <RelatedDocumentServices />
+                                <Samples />
+                            </ServiceHelp>
+                        </Service>
+                    </Property>
+                </Service>
+                <Service Name="AddApplicationRef">
+                    <Property Name="Definition">
+                        <Service>
+                            <ServiceDescription>
+                                <Handler ExecType="Java.Method">
+                                    <ClassName>tw.com.ischool.greening.user.UserServices</ClassName>
+                                    <MethodName>addApplicationRef</MethodName>
+                                </Handler>
+                                <RequestSpecification />
+                                <ResponseSpecification />
+                                <Usage />
+                            </ServiceDescription>
+                            <ServiceHelp>
+                                <Description />
+                                <RequestSDDL>
+                                    Request=(Applications)
+                                    Applications={Application}
+                                    Application=(AccessPoint,Type,Title,Memo)
+                                    AccessPoint:string
+                                    Type:string
+                                    Title:string
+                                    Memo:string
+                                </RequestSDDL>
+                                <ResponseSDDL />
+                                <Errors />
+                                <RelatedDocumentServices />
+                                <Samples />
+                            </ServiceHelp>
+                        </Service>
+                    </Property>
+                </Service>
+                <Service Name="UpdateApplication">
+                    <Property Name="Definition">
+                        <Service>
+                            <ServiceDescription>
+                                <Handler ExecType="Util.DBHelper">
+                                    <ResourceName>DBHelperRule</ResourceName>
+                                    <Resources>
+                                        <Resource Name="ReturnSQL" />
+                                        <Resource Name="DBHelperRule">
+                                            <Action>Update</Action>
+                                            <SQLTemplate>
+                                                <![CDATA[
+	                                    update account_app set @@FieldList where @@Condition				
+	                                    ]]>
+                                            </SQLTemplate>
+                                            <RequestRecordElement>Application</RequestRecordElement>
+                                            <InternalVariable>
+                                                <Variable Name="Account" Source="UserInfo" Key="UserName"/>
+                                            </InternalVariable>
+                                            <Preprocesses>
+                                                <Preprocess Name="RefAccountID" Type="Variable">
+                                                    <![CDATA[
+                                    	                select id "RefAccountID" from account where userid='@@Account'
+                                    	                ]]>
+                                                </Preprocess>
+                                            </Preprocesses>
+                                            <FieldList Name="FieldList" Source="">
+                                                <Field Required="True" Source="AccessPoint" Target="access_point" />
+                                                <Field Required="True" Source="Type" Target="type" />
+                                                <Field Source="Title" Target="title" />
+                                                <Field Source="Memo" Target="memo" />
+                                                <Field Source="RefApplicationID" Target="ref_application_id" />
+                                            </FieldList>
+                                            <Conditions Name="Condition" Source="Condition" Required="true">
+                                                <Condition Comparer="=" Quote="true" Source="AccessPoint" Target="access_point" />
+                                                <Condition Comparer="=" Quote="true" Source="Type" Target="type" />
+                                                <Condition Comparer="=" Quote="true" Source="RefAccountID" Target="ref_account_id" SourceType="Variable"/>
+                                            </Conditions>
+                                        </Resource>
+                                    </Resources>
+                                </Handler>
+                                <Usage />
+                            </ServiceDescription>
+                            <ServiceHelp>
+                                <Description />
+                                <RequestSDDL>
+                                    Request={Application}
+                                    Application=(AccessPoint,Type,Title,Memo,Condition)
+                                    Condition=(AccessPoint,Type)
+                                    AccessPoint:string
+                                    Type:dynpkg
+                                    Title:string
+                                    Memo:string
+                                </RequestSDDL>
+                                <ResponseSDDL />
+                                <Errors />
+                                <RelatedDocumentServices />
+                                <Samples />
+                            </ServiceHelp>
+                        </Service>
+                    </Property>
+                </Service>
+                <Service Name="DeleteApplication">
+                    <Property Name="Definition">
+                        <Service>
+                            <ServiceDescription>
+                                <Handler ExecType="Util.DBHelper">
+                                    <ResourceName>DBHelperRule</ResourceName>
+                                    <Resources>
+                                        <Resource Name="ReturnSQL" />
+                                        <Resource Name="DBHelperRule">
+                                            <Action>Delete</Action>
+                                            <SQLTemplate>
+                                                <![CDATA[
+	                                    delete from account_app where @@Condition
+	                                    ]]>
+                                            </SQLTemplate>
+                                            <RequestRecordElement>Application</RequestRecordElement>
+                                            <InternalVariable>
+                                                <Variable Name="Account" Source="UserInfo" Key="UserName"/>
+                                            </InternalVariable>
+                                            <Preprocesses>
+                                                <Preprocess Name="RefAccountID" Type="Variable">
+                                                    <![CDATA[
+                                    	                select id "RefAccountID" from account where userid='@@Account'
+                                    	                ]]>
+                                                </Preprocess>
+                                            </Preprocesses>
+                                            <Conditions Name="Condition" Source="" Required="true">
+                                                <Condition Comparer="=" Quote="true" Source="AccessPoint" Target="access_point" />
+                                                <Condition Comparer="=" Quote="true" Source="Type" Target="type" />
+                                                <Condition Comparer="=" Quote="true" Source="RefAccountID" Target="ref_account_id" SourceType="Variable"/>
+                                            </Conditions>
+                                        </Resource>
+                                    </Resources>
+                                </Handler>
+                                <Usage />
+                            </ServiceDescription>
+                            <ServiceHelp>
+                                <Description />
+                                <RequestSDDL>
+                                    Request={Application}
+                                    Application=(AccessPoint,Type)
+                                    AccessPoint:string
+                                    Type:dynpkg
+                                </RequestSDDL>
+                                <ResponseSDDL />
+                                <Errors />
+                                <RelatedDocumentServices />
+                                <Samples />
+                            </ServiceHelp>
+                        </Service>
+                    </Property>
+                </Service>
+                <Service Name="GetApplicationList">
+                    <Property Name="Definition">
+                        <Service>
+                            <ServiceDescription>
+                                <Handler ExecType="Java.Method">
+                                    <ClassName>tw.com.ischool.greening.user.UserServices</ClassName>
+                                    <MethodName>getApplicationList</MethodName>
+                                </Handler>
+                                <RequestSpecification />
+                                <ResponseSpecification />
+                                <Usage />
+                            </ServiceDescription>
+                            <ServiceHelp>
+                                <Description />
+                                <RequestSDDL>
+                                    Request=(Type)
+                                    Type:String
+                                </RequestSDDL>
+                                <ResponseSDDL />
+                                <Errors />
+                                <RelatedDocumentServices />
+                                <Samples />
+                            </ServiceHelp>
+                        </Service>
+                    </Property>
+                </Service>
+                <Service Name="GetApplicationListRef">
+                    <Property Name="Definition">
+                        <Service>
+                            <ServiceDescription>
+                                <Handler ExecType="Java.Method">
+                                    <ClassName>tw.com.ischool.greening.user.UserServices</ClassName>
+                                    <MethodName>getApplicationListRef</MethodName>
+                                </Handler>
+                                <RequestSpecification />
+                                <ResponseSpecification />
+                                <Usage />
+                            </ServiceDescription>
+                            <ServiceHelp>
+                                <Description />
+                                <RequestSDDL>
+                                    Request=(Type)
+                                    Type:String
+                                </RequestSDDL>
+                                <ResponseSDDL />
+                                <Errors />
+                                <RelatedDocumentServices />
+                                <Samples />
+                            </ServiceHelp>
+                        </Service>
+                    </Property>
+                </Service>
+                <Service Name="ChangeMyPassword">
+                    <Property Name="Definition">
+                        <Service>
+                            <ServiceDescription>
+                                <Handler ExecType="Java.Method">
+                                    <ClassName>tw.com.ischool.greening.user.UserServices</ClassName>
+                                    <MethodName>changeMyPassword</MethodName>
+                                </Handler>
+                                <RequestSpecification />
+                                <ResponseSpecification />
+                                <Usage />
+                            </ServiceDescription>
+                            <ServiceHelp>
+                                <Description />
+                                <RequestSDDL>
+                                    Request=(Password, NewPassword)
+                                    Password:String
+                                    NewPassword:String
+                                </RequestSDDL>
+                                <ResponseSDDL />
+                                <Errors />
+                                <RelatedDocumentServices />
+                                <Samples />
+                            </ServiceHelp>
+                        </Service>
+                    </Property>
+                </Service>
+                <Service Name="GetMyDomainInfo">
+                    <Property Name="Definition">
+                        <Service>
+                            <ServiceDescription>
+                                <Handler ExecType="Util.DBHelper">
+                                    <ResourceName>DBHelperRule</ResourceName>
+                                    <Resources>
+                                        <Resource Name="ReturnSQL" />
+                                        <Resource Name="DBHelperRule">
+                                            <Action>Select</Action>
+                                            <SQLTemplate>
+                                                <![CDATA[
+			select @@FieldList from domain 					
+			where @@Condition
+			]]>
+                                            </SQLTemplate>
+                                            <ResponseRecordElement>DomainInfo</ResponseRecordElement>
+                                            <FieldList Name="FieldList" Source="Field">
+                                                <Field Mandatory="true" Source="Caption" Target="caption" />
+                                                <Field Mandatory="true" Source="DefaultAccountType" Target="default_login_type" />
+                                                <Field Mandatory="true" Source="DomainName" Target="name" />
+                                                <Field Mandatory="true" Source="Logo" Target="logo" />
+                                                <Field Mandatory="true" OutputType="xml" Source="DynamicPackage" Target="dynamic_package_url" />
+                                                <Field Mandatory="true" OutputType="xml" Source="APUrl" Target="ap_url" />
+                                            </FieldList>
+                                            <Conditions Name="Condition" Source="Condition">
+                                                <Condition Source="DomainID" SourceType="variable" Target="id" />
+                                            </Conditions>
+                                            <InternalVariable>
+                                                <Variable Key="DomainID" Name="DomainID" Source="UserInfo" />
+                                            </InternalVariable>
+                                        </Resource>
+                                    </Resources>
+                                </Handler>
+                                <Usage>查詢Domain資訊</Usage>
+                            </ServiceDescription>
+                            <ServiceHelp>
+                                <Description />
+                                <RequestSDDL />
+                                <ResponseSDDL />
+                                <Errors />
+                                <RelatedDocumentServices />
+                                <Samples />
+                            </ServiceHelp>
+                        </Service>
+                    </Property>
+                </Service>
+                <Service Name="GetPassport">
+                    <Property Name="Definition">
+                        <Service>
+                            <ServiceDescription>
+                                <Handler ExecType="Java.Method">
+                                    <ClassName>tw.com.ischool.greening.user.UserServices</ClassName>
+                                    <MethodName>getPassport</MethodName>
+                                </Handler>
+                                <RequestSpecification />
+                                <ResponseSpecification />
+                                <Usage />
+                            </ServiceDescription>
+                            <ServiceHelp>
+                                <Description />
+                                <RequestSDDL>
+                                    Request=(User)
+                                    User:String
+                                </RequestSDDL>
+                                <ResponseSDDL />
+                                <Errors />
+                                <RelatedDocumentServices />
+                                <Samples />
+                            </ServiceHelp>
+                        </Service>
+                    </Property>
+                </Service>
+                <Service Name="GetLinkedUserList">
+                    <Property Name="Definition">
+                        <Service>
+                            <ServiceDescription>
+                                <Handler ExecType="Java.Method">
+                                    <ClassName>tw.com.ischool.greening.user.UserServices</ClassName>
+                                    <MethodName>getLinkedUserList</MethodName>
+                                </Handler>
+                                <RequestSpecification />
+                                <ResponseSpecification />
+                                <Usage />
+                            </ServiceDescription>
+                            <ServiceHelp>
+                                <Description />
+                                <RequestSDDL>
+                                </RequestSDDL>
+                                <ResponseSDDL />
+                                <Errors />
+                                <RelatedDocumentServices />
+                                <Samples />
+                            </ServiceHelp>
+                        </Service>
+                    </Property>
+                </Service>
+                <Service Name="ApproveAccountLink">
+                    <Property Name="Definition">
+                        <Service>
+                            <ServiceDescription>
+                                <Handler ExecType="Util.DBHelper">
+                                    <ResourceName>DBHelperRule</ResourceName>
+                                    <Resources>
+                                        <Resource Name="ReturnSQL" />
+                                        <Resource Name="DBHelperRule">
+                                            <Action>Update</Action>
+                                            <SQLTemplate>
+                                                <![CDATA[
+				                                    update account set @@FieldList where @@Condition and ref_linked_userid=@@RefAccountID
+				                                    ]]>
+                                            </SQLTemplate>
+                                            <RequestRecordElement>User</RequestRecordElement>
+                                            <InternalVariable>
+                                                <Variable Name="Account" Source="UserInfo" Key="UserName"/>
+                                            </InternalVariable>
+                                            <Preprocesses>
+                                                <Preprocess Name="RefAccountID" Type="Variable">
+                                                    <![CDATA[
+                                    	                select id "RefAccountID" from account where userid='@@Account'
+                                    	                ]]>
+                                                </Preprocess>
+                                            </Preprocesses>
+                                            <FieldList Name="FieldList" Source="">
+                                                <Field Required="True" Source="Approved" Target="ref_linked_userid_approved" InputConverter="Boolean"/>
+                                            </FieldList>
+                                            <Conditions Name="Condition" Source="">
+                                                <Condition Required="true" Comparer="=" Quote="true" Source="UserID" Target="userid"/>
+                                            </Conditions>
+                                        </Resource>
+                                    </Resources>
+                                </Handler>
+                                <Usage />
+                            </ServiceDescription>
+                            <ServiceHelp>
+                                <Description />
+                                <RequestSDDL>
+                                    Request={User}
+                                    User=(UserID,Approved)
+                                    UserID:string
+                                    Approved:trueORfalse
+                                </RequestSDDL>
+                                <ResponseSDDL />
+                                <Errors />
+                                <RelatedDocumentServices />
+                                <Samples />
+                            </ServiceHelp>
+                        </Service>
+                    </Property>
+                </Service>
+                <Package Name="Preference">
+                    <Service Name="AddUserPreference">
+                        <Property Name="Definition">
+                            <Service>
+                                <ServiceDescription>
+                                    <Handler ExecType="Util.DBHelper2">
+                                        <ResourceName>DBHelperRule</ResourceName>
+                                        <Resources>
+                                            <Resource Name="ReturnSQL" />
+                                            <Resource Name="DBHelperRule">
+                                                <Action>Insert</Action>
+                                                <SQLTemplate>
+                                                    <![CDATA[
+				Insert into user_preference @@FieldList
+				]]>
+                                                </SQLTemplate>
+                                                <RequestRecordElement>UserPreference</RequestRecordElement>
+                                                <FieldList Name="FieldList" Source="">
+                                                    <Field AutoNumber="true" Target="id" />
+                                                    <Field InputConverter="ToLower" Required="false" Source="LoginName" SourceType="Variable" Target="userid" />
+                                                    <Field InputType="xml" Required="true" Source="Content" Target="content" />
+                                                </FieldList>
+                                                <InternalVariable>
+                                                    <Variable Key="UserName" Name="LoginName" Source="UserInfo" />
+                                                </InternalVariable>
+                                            </Resource>
+                                        </Resources>
+                                    </Handler>
+                                    <Usage>新增User Preference</Usage>
+                                </ServiceDescription>
+                                <ServiceHelp>
+                                    <Description />
+                                    <RequestSDDL>
+                                    </RequestSDDL>
+                                    <ResponseSDDL />
+                                    <Errors />
+                                    <RelatedDocumentServices />
+                                    <Samples />
+                                </ServiceHelp>
+                            </Service>
+                        </Property>
+                    </Service>
+                    <Service Name="AddWidgetPreference">
+                        <Property Name="Definition">
+                            <Service>
+                                <ServiceDescription>
+                                    <Handler ExecType="Util.DBHelper2">
+                                        <ResourceName>DBHelperRule</ResourceName>
+                                        <Resources>
+                                            <Resource Name="ReturnSQL" />
+                                            <Resource Name="DBHelperRule">
+                                                <Action>Insert</Action>
+                                                <SQLTemplate>
+                                                    <![CDATA[
+				Insert into widget_preference @@FieldList
+				]]>
+                                                </SQLTemplate>
+                                                <RequestRecordElement>WidgetPreference</RequestRecordElement>
+                                                <FieldList Name="FieldList" Source="">
+                                                    <Field AutoNumber="true" Target="id" />
+                                                    <Field Required="true" Source="WidgetKey" Target="widget_id" />
+                                                    <Field InputConverter="ToLower" Required="false" Source="LoginName" SourceType="Variable" Target="userid" />
+                                                    <Field Required="false" Source="InstanceKey" Target="instance_id" />
+                                                    <Field Required="true" Source="Content" Target="content" />
+                                                </FieldList>
+                                                <InternalVariable>
+                                                    <Variable Key="UserName" Name="LoginName" Source="UserInfo" />
+                                                </InternalVariable>
+                                            </Resource>
+                                        </Resources>
+                                    </Handler>
+                                    <Usage>新增Plugin喜好</Usage>
+                                </ServiceDescription>
+                                <ServiceHelp>
+                                    <Description />
+                                    <RequestSDDL>
+                                    </RequestSDDL>
+                                    <ResponseSDDL />
+                                    <Errors />
+                                    <RelatedDocumentServices />
+                                    <Samples />
+                                </ServiceHelp>
+                            </Service>
+                        </Property>
+                    </Service>
+                    <Service Name="DeleteWidgetPreference">
+                        <Property Name="Definition">
+                            <Service>
+                                <ServiceDescription>
+                                    <Handler ExecType="Util.DBHelper2">
+                                        <ResourceName>DBHelperRule</ResourceName>
+                                        <Resources>
+                                            <Resource Name="ReturnSQL" />
+                                            <Resource Name="DBHelperRule">
+                                                <Action>Delete</Action>
+                                                <SQLTemplate>
+                                                    <![CDATA[
+				delete from widget_preference where lower(userid)=lower('@@UserID') and @@Condition
+				]]>
+                                                </SQLTemplate>
+                                                <RequestRecordElement>WidgetPreference</RequestRecordElement>
+                                                <Conditions Name="Condition" Source="">
+                                                    <Condition Comparer="=" Quote="true" Required="true" Source="WidgetKey" Target="widget_id" />
+                                                    <Condition Comparer="=" Quote="true" Required="false" Source="InstanceKey" Target="instance_id" />
+                                                </Conditions>
+                                                <InternalVariable>
+                                                    <Variable Key="UserName" Name="UserID" Source="UserInfo" />
+                                                </InternalVariable>
+                                            </Resource>
+                                        </Resources>
+                                    </Handler>
+                                    <Usage>刪除WidgetPreference</Usage>
+                                </ServiceDescription>
+                                <ServiceHelp>
+                                    <Description />
+                                    <RequestSDDL>
+                                    </RequestSDDL>
+                                    <ResponseSDDL />
+                                    <Errors />
+                                    <RelatedDocumentServices />
+                                    <Samples />
+                                </ServiceHelp>
+                            </Service>
+                        </Property>
+                    </Service>
+                    <Service Name="GetMyUserPreference">
+                        <Property Name="Definition">
+                            <Service>
+                                <ServiceDescription>
+                                    <Handler ExecType="Util.DBHelper2">
+                                        <ResourceName>DBHelperRule</ResourceName>
+                                        <Resources>
+                                            <Resource Name="ReturnSQL" />
+                                            <Resource Name="DBHelperRule">
+                                                <Action>Select</Action>
+                                                <SQLTemplate>
+                                                    <![CDATA[
+				select @@FieldList
+				from user_preference
+				where lower(userid)=lower('@@LoginName')
+				]]>
+                                                </SQLTemplate>
+                                                <ResponseRecordElement>UserPreference</ResponseRecordElement>
+                                                <FieldList Name="FieldList" Source="Field">
+                                                    <Field Mandatory="True" OutputType="attribute" Source="ID" Target="id" />
+                                                    <Field Mandatory="True" OutputType="xml" Source="Content" Target="content" />
+                                                </FieldList>
+                                                <Pagination Allow="true" />
+                                                <InternalVariable>
+                                                    <Variable Key="UserName" Name="LoginName" Source="UserInfo" />
+                                                </InternalVariable>
+                                            </Resource>
+                                        </Resources>
+                                    </Handler>
+                                    <Usage>取得登入資訊。</Usage>
+                                </ServiceDescription>
+                                <ServiceHelp>
+                                    <Description />
+                                    <RequestSDDL>
+                                    </RequestSDDL>
+                                    <ResponseSDDL />
+                                    <Errors />
+                                    <RelatedDocumentServices />
+                                    <Samples />
+                                </ServiceHelp>
+                            </Service>
+                        </Property>
+                    </Service>
+                    <Service Name="GetMyWidgetPreference">
+                        <Property Name="Definition">
+                            <Service>
+                                <ServiceDescription>
+                                    <Handler ExecType="Util.DBHelper2">
+                                        <ResourceName>DBHelperRule</ResourceName>
+                                        <Resources>
+                                            <Resource Name="ReturnSQL" />
+                                            <Resource Name="DBHelperRule">
+                                                <Action>Select</Action>
+                                                <SQLTemplate>
+                                                    <![CDATA[
+				select @@FieldList
+				from widget_preference
+				where lower(userid)=lower('@@LoginName') and @@Condition
+				]]>
+                                                </SQLTemplate>
+                                                <ResponseRecordElement>WidgetPreferenceList/WidgetPreference</ResponseRecordElement>
+                                                <FieldList Name="FieldList" Source="Field">
+                                                    <Field Mandatory="True" OutputType="Attribute" Source="WidgetID" Target="widget_id" />
+                                                    <Field Mandatory="True" OutputType="Attribute" Source="InstanceID" Target="instance_id" />
+                                                    <Field Mandatory="True" OutputType="Attribute" Source="ID" Target="id" />
+                                                    <Field Mandatory="True" OutputType="cdata" Source="Content" Target="content" />
+                                                </FieldList>
+                                                <Conditions Name="Condition" Source="">
+                                                    <Condition Comparer="=" Quote="true" Required="true" Source="WidgetKey" Target="widget_id" />
+                                                    <Condition Comparer="=" Quote="true" Required="false" Source="InstanceKey" Target="instance_id" />
+                                                </Conditions>
+                                                <Pagination Allow="true" />
+                                                <InternalVariable>
+                                                    <Variable Key="UserName" Name="LoginName" Source="UserInfo" />
+                                                </InternalVariable>
+                                            </Resource>
+                                        </Resources>
+                                    </Handler>
+                                    <Usage>取得WidgetPreference。</Usage>
+                                </ServiceDescription>
+                                <ServiceHelp>
+                                    <Description />
+                                    <RequestSDDL>
+                                    </RequestSDDL>
+                                    <ResponseSDDL />
+                                    <Errors />
+                                    <RelatedDocumentServices />
+                                    <Samples />
+                                </ServiceHelp>
+                            </Service>
+                        </Property>
+                    </Service>
+                    <Service Name="UpdateUserPreference">
+                        <Property Name="Definition">
+                            <Service>
+                                <ServiceDescription>
+                                    <Handler ExecType="Util.DBHelper2">
+                                        <ResourceName>DBHelperRule</ResourceName>
+                                        <Resources>
+                                            <Resource Name="ReturnSQL" />
+                                            <Resource Name="DBHelperRule">
+                                                <Action>Update</Action>
+                                                <SQLTemplate>
+                                                    <![CDATA[
+				update user_preference set @@FieldList
+				where lower(userid)=lower('@@LoginName');
+				]]>
+                                                </SQLTemplate>
+                                                <RequestRecordElement>UserPreference</RequestRecordElement>
+                                                <FieldList Name="FieldList" Source="">
+                                                    <Field InputType="xml" Required="true" Source="Content" Target="content" />
+                                                </FieldList>
+                                                <InternalVariable>
+                                                    <Variable Key="UserName" Name="LoginName" Source="UserInfo" />
+                                                </InternalVariable>
+                                            </Resource>
+                                        </Resources>
+                                    </Handler>
+                                    <Usage>編輯Global喜好</Usage>
+                                </ServiceDescription>
+                                <ServiceHelp>
+                                    <Description />
+                                    <RequestSDDL>
+                                    </RequestSDDL>
+                                    <ResponseSDDL />
+                                    <Errors />
+                                    <RelatedDocumentServices />
+                                    <Samples />
+                                </ServiceHelp>
+                            </Service>
+                        </Property>
+                    </Service>
+                    <Service Name="UpdateWidgetPreference">
+                        <Property Name="Definition">
+                            <Service>
+                                <ServiceDescription>
+                                    <Handler ExecType="Util.DBHelper2">
+                                        <ResourceName>DBHelperRule</ResourceName>
+                                        <Resources>
+                                            <Resource Name="ReturnSQL" />
+                                            <Resource Name="DBHelperRule">
+                                                <Action>Update</Action>
+                                                <SQLTemplate>
+                                                    <![CDATA[
+				update widget_preference set @@FieldList
+				where lower(userid)=lower('@@LoginName') and @@Condition
+				]]>
+                                                </SQLTemplate>
+                                                <RequestRecordElement>WidgetPreference</RequestRecordElement>
+                                                <FieldList Name="FieldList" Source="">
+                                                    <Field Required="true" Source="Content" Target="content" />
+                                                </FieldList>
+                                                <Conditions Name="Condition" Source="">
+                                                    <Condition Comparer="=" Quote="true" Required="true" Source="WidgetKey" Target="widget_id" />
+                                                    <Condition Comparer="=" Quote="true" Required="true" Source="InstanceKey" Target="instance_id" />
+                                                </Conditions>
+                                                <InternalVariable>
+                                                    <Variable Key="UserName" Name="LoginName" Source="UserInfo" />
+                                                </InternalVariable>
+                                            </Resource>
+                                        </Resources>
+                                    </Handler>
+                                    <Usage>編輯WidgetPreference</Usage>
+                                </ServiceDescription>
+                                <ServiceHelp>
+                                    <Description />
+                                    <RequestSDDL>
+                                    </RequestSDDL>
+                                    <ResponseSDDL />
+                                    <Errors />
+                                    <RelatedDocumentServices />
+                                    <Samples />
+                                </ServiceHelp>
+                            </Service>
+                        </Property>
+                    </Service>
+                </Package>
+            </Package>
+        </Contract>
+        <Contract Name="__php_client">
+            <Property Name="Config">
+                <AccessPoint>
+                    <Authentication>
+                        <CustomAuthenticator DriverClass="ischool.dsa.security.authentication.FullTrustClient" TokenType="FullTrustClient">
+                            <ClientIP>127.0.0.1</ClientIP>
+                            <Password><![CDATA[ischool!#%&(]]></Password>
+                        </CustomAuthenticator>
+                        <Basic>
+                            <UserInfoStorage Type="XmlFile">
+                                <User Name="phpsuperuser" Password="superuser129))^$^"/>
+                            </UserInfoStorage>
+                        </Basic>
+                        <Session Enabled="True">
+                            <SessionManager Type="DBSessionManager">
+                                <Timeout>1500</Timeout>
+                            </SessionManager>
+                        </Session>
+                    </Authentication>
+                    <CertificateProvider Enabled="false" Timeout="0" />
+                </AccessPoint>
+            </Property>
+            <Property Name="Resource">
+                <Resources>
+                    <Resource Name="Contract">user</Resource>
+                </Resources>
+            </Property>
+            <Property Name="Enabled">true</Property>
+            <Property Name="DefaultContract">false</Property>
+            <Package Name=".">
+                <Service Name="GetSessionID">
+                    <Property Name="Definition">
+                        <Service>
+                            <ServiceDescription>
+                                <Handler ExecType="Java.Method">
+                                    <ClassName>tw.com.ischool.greening.sessionmanager.Session</ClassName>
+                                    <MethodName>getSessionID</MethodName>
+                                </Handler>
+                                <RequestSpecification />
+                                <ResponseSpecification />
+                                <Usage>取得使用者 SessionID</Usage>
+                            </ServiceDescription>
+                            <ServiceHelp>
+                                <Description />
+                                <RequestSDDL>
+                                    Request=(UserID)
+                                    UserID:String
+                                </RequestSDDL>
+                                <ResponseSDDL />
+                                <Errors />
+                                <RelatedDocumentServices />
+                                <Samples />
+                            </ServiceHelp>
+                        </Service>
+                    </Property>
+                </Service>
+                <Service Name="GetPassport">
+                    <Property Name="Definition">
+                        <Service>
+                            <ServiceDescription>
+                                <Handler ExecType="Java.Method">
+                                    <ClassName>tw.com.ischool.greening.sessionmanager.OAuthServices</ClassName>
+                                    <MethodName>getPassport</MethodName>
+                                    <Resources/>
+                                </Handler>
+                                <RequestSpecification />
+                                <ResponseSpecification />
+                                <Usage>取回Passport</Usage>
+                            </ServiceDescription>
+                            <ServiceHelp>
+                                <Description />
+                                <RequestSDDL>
+                                    Request=(UserInfo,AuthContract,Applicant,Scope)
+                                    UserInfo=(@Server,@Application,@Contract,@Expired,@Extendable,@Timeout,@UserName,Property,Role)
+                                    Property=(@Name)
+                                    Role=(@Name)
+                                    Applicant=(ClientID, Namespace, DisplayName)
+                                    AuthContract:string
+                                    Scope:string
+                                </RequestSDDL>
+                                <ResponseSDDL />
+                                <Errors />
+                                <RelatedDocumentServices />
+                                <Samples />
+                            </ServiceHelp>
+                        </Service>
+                    </Property>
+                </Service>
+                <Service Name="SignPassport">
+                    <Property Name="Definition">
+                        <Service>
+                            <ServiceDescription>
+                                <Handler ExecType="Java.Method">
+                                    <ClassName>tw.com.ischool.greening.sessionmanager.OAuthServices</ClassName>
+                                    <MethodName>signPassport</MethodName>
+                                    <Resources/>
+                                </Handler>
+                                <RequestSpecification />
+                                <ResponseSpecification />
+                                <Usage></Usage>
+                            </ServiceDescription>
+                            <ServiceHelp>
+                                <Description />
+                                <RequestSDDL>
+                                </RequestSDDL>
+                                <ResponseSDDL />
+                                <Errors />
+                                <RelatedDocumentServices />
+                                <Samples />
+                            </ServiceHelp>
+                        </Service>
+                    </Property>
+                </Service>
+                <Service Name="GetPassportByID">
+                    <Property Name="Definition">
+                        <Service>
+                            <ServiceDescription>
+                                <Handler ExecType="Java.Method">
+                                    <ClassName>tw.com.ischool.greening.sessionmanager.OAuthServices</ClassName>
+                                    <MethodName>getPassportByID</MethodName>
+                                    <Resources/>
+                                </Handler>
+                                <RequestSpecification />
+                                <ResponseSpecification />
+                                <Usage></Usage>
+                            </ServiceDescription>
+                            <ServiceHelp>
+                                <Description />
+                                <RequestSDDL>
+                                </RequestSDDL>
+                                <ResponseSDDL />
+                                <Errors />
+                                <RelatedDocumentServices />
+                                <Samples />
+                            </ServiceHelp>
+                        </Service>
+                    </Property>
+                </Service>
+            </Package>
+        </Contract>
+        <Contract Name="dsanodeconfiguration" Description="DSA Node Configuration">
+            <Property Name="Config">
+                <AccessPoint>
+                    <Authentication>
+                        <Session Enabled="True">
+                            <SessionManager Type="DBSessionManager">
+                                <Timeout>1500</Timeout>
+                            </SessionManager>
+                        </Session>
+                        <Passport Enabled="True">
+                            <Issuer Name="test.greening.shared.user">
+                                <CertificateProvider Type="HttpGet">https://authbug.ischool.com.tw:8443/dsa/greening/info/Public.GetPublicKey</CertificateProvider>
+                            </Issuer>
+                            <Issuer Name="greening.shared.user">
+                                <CertificateProvider Type="HttpGet">https://auth.ischool.com.tw:8443/dsa/greening/info/Public.GetPublicKey</CertificateProvider>
+                            </Issuer>
+                            <AccountLinking Type="mapping">
+                                <TableName>account</TableName>
+                                <UserNameField>userid</UserNameField>
+                                <MappingField>userid</MappingField>
+                                <Properties>
+                                </Properties>
+                            </AccountLinking>
+                        </Passport>
+                    </Authentication>
+                </AccessPoint>
+            </Property>
+            <Property Name="Resource">
+                <Resources>
+                </Resources>
+            </Property>
+            <Property Name="Enabled">true</Property>
+            <Property Name="DefaultContract">false</Property>
+            <Package Name=".">
+            </Package>
+        </Contract>
+        <Contract Name="dsanodemanager" Description="DSA Node Manager">
+            <Property Name="Config">
+                <AccessPoint>
+                    <Authentication>
+                        <Session Enabled="True">
+                            <SessionManager Type="DBSessionManager">
+                                <Timeout>1500</Timeout>
+                            </SessionManager>
+                        </Session>
+                        <Passport Enabled="True">
+                            <Issuer Name="test.greening.shared.user">
+                                <CertificateProvider Type="HttpGet">https://authbug.ischool.com.tw:8443/dsa/greening/info/Public.GetPublicKey</CertificateProvider>
+                            </Issuer>
+                            <Issuer Name="greening.shared.user">
+                                <CertificateProvider Type="HttpGet">https://auth.ischool.com.tw:8443/dsa/greening/info/Public.GetPublicKey</CertificateProvider>
+                            </Issuer>
+                            <AccountLinking Type="mapping">
+                                <TableName>frontier.node_manager</TableName>
+                                <UserNameField>userid</UserNameField>
+                                <MappingField>userid</MappingField>
+                                <Properties>
+                                </Properties>
+                            </AccountLinking>
+                        </Passport>
+                    </Authentication>
+                </AccessPoint>
+            </Property>
+            <Property Name="Resource">
+                <Resources>
+                </Resources>
+            </Property>
+            <Property Name="Enabled">true</Property>
+            <Property Name="DefaultContract">false</Property>
+            <Package Name=".">
+                <Service Name="GetServerNodeList">
+                    <Property Name="Definition">
+                        <Service>
+                            <ServiceDescription>
+                                <Handler ExecType="Util.DBHelper">
+                                    <ResourceName>DBHelperRule</ResourceName>
+                                    <Resources>
+                                        <Resource Name="ReturnSQL" />
+                                        <Resource Name="DBHelperRule">
+                                            <Action>Select</Action>
+                                            <SQLTemplate>
+                                                <![CDATA[
+				                                select @@FieldList
+                                                from frontier.server_node server_node
+	                                                join frontier.server_team server_team on server_node.ref_server_team_id=server_team.id
+	                                                join frontier.as_join as_join on as_join.ref_server_team_id=server_team.id
+	                                                join account on account.id=as_join.ref_account_id
+				                                where @@Condition and account.userid='@@UserName'
+				                                ]]>
+                                            </SQLTemplate>
+                                            <ResponseRecordElement>ServerNodes/ServerNode</ResponseRecordElement>
+                                            <FieldList Name="FieldList" Source="Field">
+                                                <Field OutputType="Attribute" Source="ID" Target="server_node.id" />
+                                                <Field Source="Name" Target="server_node.name" />
+                                                <Field Source="Config" Target="server_node.config" OutputType="Xml" />
+                                                <Field Source="LicenseKey" Target="server_node.license_key" />
+                                                <Field Source="RefServerTeamID" Target="server_node.ref_server_team_id" />
+                                                <Field Source="HttpBaseUrl" Target="server_node.http_base_url" />
+                                                <Field Source="HttpsBaseUrl" Target="server_node.https_base_url" />
+                                                <Field Source="Memo" Target="server_node.memo" />
+                                                <Field Source="LastUpdate" Target="server_node.last_update" />
+                                                <Field Source="AppNodeCount" Target="(select count(*) from frontier.app_node where ref_server_node_id=server_node.id)" />
+                                            </FieldList>
+                                            <Conditions Name="Condition" Source="Condition">
+                                                <Condition Comparer="in" Source="ID" Target="server_node.id" />
+                                            </Conditions>
+                                            <InternalVariable>
+                                                <Variable Key="UserName" Name="UserName" Source="UserInfo" />
+                                            </InternalVariable>
+                                            <Pagination Allow="true" />
+                                        </Resource>
+                                    </Resources>
+                                </Handler>
+                                <Usage></Usage>
+                            </ServiceDescription>
+                            <ServiceHelp>
+                                <Description />
+                                <RequestSDDL>
+                                    Request=(Field,Condition)
+                                    Field=(ID,Name,Config,LicenseKey,RefServerTeamID,HttpBaseUrl,HttpsBaseUrl,Memo)
+                                    Condition=({Name},{ID})
+                                    Condition/ID:integer
+                                    Condition/Name:string
+                                </RequestSDDL>
+                                <ResponseSDDL />
+                                <Errors />
+                                <RelatedDocumentServices />
+                                <Samples />
+                            </ServiceHelp>
+                        </Service>
+                    </Property>
+                </Service>
+                <Service Name="InsertServerNode">
+                    <Property Name="Definition">
+                        <Service>
+                            <ServiceDescription>
+                                <Handler ExecType="Util.DBHelper">
+                                    <ResourceName>DBHelperRule</ResourceName>
+                                    <Resources>
+                                        <Resource Name="ReturnSQL" />
+                                        <Resource Name="DBHelperRule">
+                                            <Action>Insert</Action>
+                                            <SQLTemplate>
+                                                <![CDATA[
+				                                Insert into frontier.server_node @@FieldList
+				                                ]]>
+                                            </SQLTemplate>
+                                            <InternalVariable>
+                                                <Variable Key="UserName" Name="UserName" Source="UserInfo" />
+                                            </InternalVariable>
+                                            <Preprocesses>
+                                                <Preprocess Type="variable" Name="GetServerTeamIDPreprocess">
+                                                    <![CDATA[
+                                                SELECT server_team.id "ServerTeamID"
+                                                FROM frontier.server_team server_team join frontier.as_join as_join on as_join.ref_server_team_id=server_team.id
+	                                                join account on account.id=as_join.ref_account_id
+                                                WHERE account.userid='@@UserName'
+                                                ]]>
+                                                </Preprocess>
+                                            </Preprocesses>
+                                            <RequestRecordElement>ServerNode</RequestRecordElement>
+                                            <FieldList Name="FieldList" Source="">
+                                                <Field AutoNumber="true" Target="id" />
+                                                <Field Required="true" Source="Name" Target="name" />
+                                                <Field Required="true" Source="ServerTeamID" Target="ref_server_team_id" SourceType="Variable"/>
+                                            </FieldList>
+                                        </Resource>
+                                    </Resources>
+                                </Handler>
+                                <Usage />
+                            </ServiceDescription>
+                            <ServiceHelp>
+                                <Description />
+                                <RequestSDDL>
+                                    Request=(ServerNode)
+                                    ServerNode=(Name)
+                                    Name:string
+                                </RequestSDDL>
+                                <ResponseSDDL />
+                                <Errors />
+                                <RelatedDocumentServices />
+                                <Samples />
+                            </ServiceHelp>
+                        </Service>
+                    </Property>
+                </Service>
+                <Service Name="UpdateServerNode">
+                    <Property Name="Definition">
+                        <Service>
+                            <ServiceDescription>
+                                <Handler ExecType="Util.DBHelper">
+                                    <ResourceName>DBHelperRule</ResourceName>
+                                    <Resources>
+                                        <Resource Name="ReturnSQL" />
+                                        <Resource Name="DBHelperRule">
+                                            <Action>Update</Action>
+                                            <SQLTemplate>
+                                                <![CDATA[
+				                                update frontier.server_node set @@FieldList where @@Condition
+				                                ]]>
+                                            </SQLTemplate>
+                                            <InternalVariable>
+                                                <Variable Key="UserName" Name="UserName" Source="UserInfo" />
+                                                <Variable Name="Now" Source="Literal">now()</Variable>
+                                            </InternalVariable>
+                                            <Preprocesses>
+                                                <Preprocess Type="variable" Name="GetServerTeamIDPreprocess">
+                                                    <![CDATA[
+                                                SELECT server_team.id "ServerTeamID"
+                                                FROM frontier.server_team server_team join frontier.as_join as_join on as_join.ref_server_team_id=server_team.id
+	                                                join account on account.id=as_join.ref_account_id
+                                                WHERE account.userid='@@UserName'
+                                                ]]>
+                                                </Preprocess>
+                                            </Preprocesses>
+                                            <RequestRecordElement>ServerNode</RequestRecordElement>
+                                            <FieldList Name="FieldList" Source="">
+                                                <Field AutoNumber="true" Target="id" />
+                                                <Field Source="Name" Target="name" />
+                                                <Field Source="Config" Target="config" InputType="Xml"/>
+                                                <Field Source="LicenseKey" Target="license_key" />
+                                                <Field Source="HttpBaseUrl" Target="http_base_url" />
+                                                <Field Source="HttpsBaseUrl" Target="https_base_url" />
+                                                <Field Source="Memo" Target="memo" />
+                                                <Field Source="Now" Target="last_update" SourceType="Variable" />
+                                            </FieldList>
+                                            <Conditions Name="Condition" Required="true" Source="Condition">
+                                                <Condition Comparer="=" Quote="true" Source="ID" Target="id" />
+                                                <Condition Comparer="=" Quote="true" Source="ServerTeamID" Target="ref_server_team_id" SourceType="Variable"/>
+                                            </Conditions>
+                                        </Resource>
+                                    </Resources>
+                                </Handler>
+                                <Usage />
+                            </ServiceDescription>
+                            <ServiceHelp>
+                                <Description />
+                                <RequestSDDL>
+                                    Request={ServerNode}
+                                    ServerNode=(Name,Config,LicenseKey,HttpBaseUrl,HttpsBaseUrl,Memo,Condition)
+                                    Condition=(ID)
+                                    ID:integer
+                                    Name:string
+                                    Config:string
+                                    LicenseKey:string
+                                    HttpBaseUrl:string
+                                    HttpsBaseUrl:string
+                                    Memo:string
+                                </RequestSDDL>
+                                <ResponseSDDL />
+                                <Errors />
+                                <RelatedDocumentServices />
+                                <Samples />
+                            </ServiceHelp>
+                        </Service>
+                    </Property>
+                </Service>
+                <Service Name="DeleteServerNode">
+                    <Property Name="Definition">
+                        <Service>
+                            <ServiceDescription>
+                                <Handler ExecType="Util.DBHelper">
+                                    <ResourceName>DBHelperRule</ResourceName>
+                                    <Resources>
+                                        <Resource Name="ReturnSQL" />
+                                        <Resource Name="DBHelperRule">
+                                            <Action>Delete</Action>
+                                            <SQLTemplate>
+                                                <![CDATA[
+				                                delete from frontier.server_node where @@Condition
+				                                ]]>
+                                            </SQLTemplate>
+                                            <RequestRecordElement>ServerNode</RequestRecordElement>
+                                            <Conditions Name="Condition" Required="true" Source="">
+                                                <Condition Comparer="in" Quote="true" Source="ID" Target="id" />
+                                            </Conditions>
+                                        </Resource>
+                                    </Resources>
+                                </Handler>
+                                <Usage />
+                            </ServiceDescription>
+                            <ServiceHelp>
+                                <Description />
+                                <RequestSDDL>
+                                    Request={ServerNode}
+                                    ServerNode=(ID)
+                                    ID:integer
+                                </RequestSDDL>
+                                <ResponseSDDL />
+                                <Errors />
+                                <RelatedDocumentServices />
+                                <Samples />
+                            </ServiceHelp>
+                        </Service>
+                    </Property>
+                </Service>
+                <Service Name="GetAppNodeList">
+                    <Property Name="Definition">
+                        <Service>
+                            <ServiceDescription>
+                                <Handler ExecType="Util.DBHelper">
+                                    <ResourceName>DBHelperRule</ResourceName>
+                                    <Resources>
+                                        <Resource Name="ReturnSQL" />
+                                        <Resource Name="DBHelperRule">
+                                            <Action>Select</Action>
+                                            <SQLTemplate>
+                                                <![CDATA[
+				                                select @@FieldList
+                                                from frontier.app_node app_node
+                                                    join frontier.server_node server_node on server_node.id=app_node.ref_server_node_id
+	                                                join frontier.server_team server_team on server_node.ref_server_team_id=server_team.id
+	                                                join frontier.as_join as_join on as_join.ref_server_team_id=server_team.id
+	                                                join account on account.id=as_join.ref_account_id
+				                                where @@Condition and account.userid='@@UserName'
+				                                ]]>
+                                            </SQLTemplate>
+                                            <ResponseRecordElement>AppNodes/AppNode</ResponseRecordElement>
+                                            <FieldList Name="FieldList" Source="Field">
+                                                <Field OutputType="Attribute" Source="ID" Target="app_node.id" />
+                                                <Field Source="Name" Target="app_node.name" />
+                                                <Field Source="Config" Target="app_node.config" OutputType="Xml" />
+                                                <Field Source="DSNSName" Target="app_node.last_update" />
+                                                <Field Source="Memo" Target="app_node.memo" />
+                                                <Field Source="RefServerNodeID" Target="app_node.ref_server_node_id" />
+                                            </FieldList>
+                                            <Conditions Name="Condition" Source="Condition">
+                                                <Condition Comparer="in" Source="ID" Target="app_node.id" />
+                                                <Condition Comparer="in" Source="RefServerNodeID" Target="app_node.ref_server_node_id" />
+                                            </Conditions>
+                                            <InternalVariable>
+                                                <Variable Key="UserName" Name="UserName" Source="UserInfo" />
+                                            </InternalVariable>
+                                            <Pagination Allow="true" />
+                                        </Resource>
+                                    </Resources>
+                                </Handler>
+                                <Usage></Usage>
+                            </ServiceDescription>
+                            <ServiceHelp>
+                                <Description />
+                                <RequestSDDL>
+                                    Request=(Field,Condition)
+                                    Field=(ID,Name,Config,DSNSName,RefServerNodeID,Memo)
+                                    Condition=({RefServerNodeID},{ID})
+                                    Condition/ID:integer
+                                    Condition/RefServerNodeID:integer
+                                </RequestSDDL>
+                                <ResponseSDDL />
+                                <Errors />
+                                <RelatedDocumentServices />
+                                <Samples />
+                            </ServiceHelp>
+                        </Service>
+                    </Property>
+                </Service>
+                <Service Name="InsertAppNode">
+                    <Property Name="Definition">
+                        <Service>
+                            <ServiceDescription>
+                                <Handler ExecType="Util.DBHelper">
+                                    <ResourceName>DBHelperRule</ResourceName>
+                                    <Resources>
+                                        <Resource Name="ReturnSQL" />
+                                        <Resource Name="DBHelperRule">
+                                            <Action>Insert</Action>
+                                            <SQLTemplate>
+                                                <![CDATA[
+				                                Insert into frontier.app_node @@FieldList
+				                                ]]>
+                                            </SQLTemplate>
+                                            <RequestRecordElement>AppNode</RequestRecordElement>
+                                            <FieldList Name="FieldList" Source="">
+                                                <Field AutoNumber="true" Target="id" />
+                                                <Field Required="true" Source="Name" Target="name" />
+                                                <Field Required="true" Source="RefServerNodeID" Target="ref_server_node_id" />
+                                            </FieldList>
+                                        </Resource>
+                                    </Resources>
+                                </Handler>
+                                <Usage />
+                            </ServiceDescription>
+                            <ServiceHelp>
+                                <Description />
+                                <RequestSDDL>
+                                    Request=({AppNode})
+                                    AppNode=(Name,RefServerNodeID)
+                                    Name:string
+                                    RefServerNodeID:integer
+                                </RequestSDDL>
+                                <ResponseSDDL />
+                                <Errors />
+                                <RelatedDocumentServices />
+                                <Samples />
+                            </ServiceHelp>
+                        </Service>
+                    </Property>
+                </Service>
+                <Service Name="UpdateAppNode">
+                    <Property Name="Definition">
+                        <Service>
+                            <ServiceDescription>
+                                <Handler ExecType="Util.DBHelper">
+                                    <ResourceName>DBHelperRule</ResourceName>
+                                    <Resources>
+                                        <Resource Name="ReturnSQL" />
+                                        <Resource Name="DBHelperRule">
+                                            <Action>Update</Action>
+                                            <SQLTemplate>
+                                                <![CDATA[
+				                                update frontier.app_node set @@FieldList where @@Condition
+				                                ]]>
+                                            </SQLTemplate>
+                                            <InternalVariable>
+                                                <Variable Key="UserName" Name="UserName" Source="UserInfo" />
+                                                <Variable Name="Now" Source="Literal">now()</Variable>
+                                            </InternalVariable>
+                                            <RequestRecordElement>AppNode</RequestRecordElement>
+                                            <FieldList Name="FieldList" Source="">
+                                                <Field AutoNumber="true" Target="id" />
+                                                <Field Source="Name" Target="name" />
+                                                <Field Source="RefServerNodeID" Target="ref_server_node_id"/>
+                                                <Field Source="DSNSName" Target="dsns_name"/>
+                                                <Field Source="Config" Target="config" InputType="Xml"/>
+                                                <Field Source="Memo" Target="memo" />
+                                                <Field Source="Now" Target="last_update" SourceType="Variable" />
+                                            </FieldList>
+                                            <Conditions Name="Condition" Required="true" Source="Condition">
+                                                <Condition Comparer="=" Quote="true" Source="ID" Target="id" />
+                                            </Conditions>
+                                        </Resource>
+                                    </Resources>
+                                </Handler>
+                                <Usage />
+                            </ServiceDescription>
+                            <ServiceHelp>
+                                <Description />
+                                <RequestSDDL>
+                                    Request={AppNode}
+                                    AppNode=(Name,RefServerNodeID,DSNSName,Config,Memo,Condition)
+                                    Condition=(ID)
+                                    ID:integer
+                                    Name:string
+                                    RefServerNodeID:integer
+                                    DSNSName:string
+                                    Config:string
+                                    Memo:string
+                                </RequestSDDL>
+                                <ResponseSDDL />
+                                <Errors />
+                                <RelatedDocumentServices />
+                                <Samples />
+                            </ServiceHelp>
+                        </Service>
+                    </Property>
+                </Service>
+                <Service Name="DeleteAppNode">
+                    <Property Name="Definition">
+                        <Service>
+                            <ServiceDescription>
+                                <Handler ExecType="Util.DBHelper">
+                                    <ResourceName>DBHelperRule</ResourceName>
+                                    <Resources>
+                                        <Resource Name="ReturnSQL" />
+                                        <Resource Name="DBHelperRule">
+                                            <Action>Delete</Action>
+                                            <SQLTemplate>
+                                                <![CDATA[
+				                                delete from frontier.app_node where @@Condition
+				                                ]]>
+                                            </SQLTemplate>
+                                            <RequestRecordElement>AppNode</RequestRecordElement>
+                                            <Conditions Name="Condition" Required="true" Source="">
+                                                <Condition Comparer="in" Quote="true" Source="ID" Target="id" />
+                                            </Conditions>
+                                        </Resource>
+                                    </Resources>
+                                </Handler>
+                                <Usage />
+                            </ServiceDescription>
+                            <ServiceHelp>
+                                <Description />
+                                <RequestSDDL>
+                                    Request={AppNode}
+                                    AppNode=(ID)
+                                    ID:integer
+                                </RequestSDDL>
+                                <ResponseSDDL />
+                                <Errors />
+                                <RelatedDocumentServices />
+                                <Samples />
+                            </ServiceHelp>
+                        </Service>
+                    </Property>
+                </Service>
+            </Package>
+        </Contract>
+    </Application>
+</Response>
